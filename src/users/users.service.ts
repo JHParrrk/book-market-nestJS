@@ -23,9 +23,14 @@ export class UsersService {
    * @param userData - email, password, name 등 사용자 정보
    */
   async register(
-    userData: Pick<User, 'email' | 'password' | 'name' | 'address' | 'phone_number'>,
+    userData: Pick<
+      User,
+      'email' | 'password' | 'name' | 'address' | 'phone_number'
+    >,
   ): Promise<Omit<User, 'password'>> {
-    const existingUser = await this.userRepository.findOneBy({ email: userData.email });
+    const existingUser = await this.userRepository.findOneBy({
+      email: userData.email,
+    });
     if (existingUser) {
       throw new ConflictException('이미 존재하는 이메일입니다.');
     }
@@ -51,12 +56,16 @@ export class UsersService {
   async login(email: string, pass: string): Promise<{ accessToken: string }> {
     const user = await this.userRepository.findOneBy({ email });
     if (!user) {
-      throw new UnauthorizedException('이메일 또는 비밀번호가 유효하지 않습니다.');
+      throw new UnauthorizedException(
+        '이메일 또는 비밀번호가 유효하지 않습니다.',
+      );
     }
 
     const isPasswordValid = await bcrypt.compare(pass, user.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('이메일 또는 비밀번호가 유효하지 않습니다.');
+      throw new UnauthorizedException(
+        '이메일 또는 비밀번호가 유효하지 않습니다.',
+      );
     }
 
     const payload = { sub: user.id, email: user.email, role: user.role };
@@ -70,7 +79,15 @@ export class UsersService {
    */
   findAll(): Promise<User[]> {
     return this.userRepository.find({
-      select: ['id', 'email', 'name', 'address', 'phone_number', 'role', 'created_at'],
+      select: [
+        'id',
+        'email',
+        'name',
+        'address',
+        'phone_number',
+        'role',
+        'created_at',
+      ],
     });
   }
 
@@ -100,7 +117,7 @@ export class UsersService {
 
     // updateData를 기존 user 객체에 병합
     Object.assign(user, updateData);
-    
+
     return this.userRepository.save(user);
   }
 

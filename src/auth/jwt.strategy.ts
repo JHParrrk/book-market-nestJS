@@ -1,4 +1,5 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+// import { UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -24,7 +25,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // if (!user) {
     //   throw new UnauthorizedException('존재하지 않는 사용자입니다.');
     // }
-    
+
     // 이 메서드의 반환값은 @Req() 데코레이터를 사용했을 때 req.user에 담깁니다.
     return { id: payload.sub, email: payload.email, role: payload.role };
   }

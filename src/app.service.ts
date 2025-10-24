@@ -12,8 +12,10 @@ export class AppService implements OnModuleInit {
       await this.dataSource.query('SELECT 1');
       console.log('✅ Database connection is healthy');
     } catch (error) {
-      console.error('❌ Database connection failed:', error.message);
+      console.error(
+        '❌ Database connection failed:',
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 }
-

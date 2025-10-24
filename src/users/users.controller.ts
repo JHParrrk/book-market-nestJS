@@ -85,7 +85,7 @@ export class UsersController {
     return this.usersService.remove(id);
   }
 
-   // --- [수정된 메서드] ---
+  // --- [수정된 메서드] ---
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @Patch(':id/role')
