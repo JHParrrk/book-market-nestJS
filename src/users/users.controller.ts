@@ -19,6 +19,8 @@ import { Roles } from '../auth/roles.decorator';
 import { CreateUserDto } from './dto/create-user.dto'; // DTO를 사용한 유효성 검사
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
+// [추가] 커스텀 Request 타입을 import 합니다.
+import type { RequestWithUser } from '../common/interfaces/request-with-user.interface';
 
 @Controller('users')
 export class UsersController {
@@ -39,15 +41,16 @@ export class UsersController {
   }
 
   // --- 인증이 필요한 라우트 ---
-  @UseGuards(JwtAuthGuard) // 이 아래 모든 라우트는 인증된 사용자만 접근 가능
+  @UseGuards(JwtAuthGuard)
   @Get('me')
-  getMe(@Req() req) {
-    // req.user는 JwtStrategy의 validate 메서드가 반환한 값
+  getMe(@Req() req: RequestWithUser) {
+    // [수정] 타입을 명시합니다.
+    // req.user는 이제 User 타입으로 인식됩니다.
     return this.usersService.findOneById(req.user.id);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard) // 인증 + 역할(admin) 검사
-  @Roles('admin') // 'admin' 역할이 필요함을 명시
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   @Get()
   findAll() {
     return this.usersService.findAll();
@@ -55,8 +58,9 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number, @Req() req) {
-    // 관리자가 아니면서, 자기 자신도 아닌 경우 접근 제한
+  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithUser) {
+    // [수정] 타입을 명시합니다.
+    // req.user.role과 req.user.id가 타입-세이프하게 접근됩니다.
     if (req.user.role !== 'admin' && req.user.id !== id) {
       throw new ForbiddenException('자신의 프로필만 조회할 수 있습니다.');
     }
@@ -68,7 +72,7 @@ export class UsersController {
   updateUser(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateUserDto: UpdateUserDto,
-    @Req() req,
+    @Req() req: RequestWithUser, // [수정] 타입을 명시합니다.
   ) {
     if (req.user.role !== 'admin' && req.user.id !== id) {
       throw new ForbiddenException('자신의 프로필만 수정할 수 있습니다.');
@@ -78,7 +82,8 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req) {
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: RequestWithUser) {
+    // [수정] 타입을 명시합니다.
     if (req.user.role !== 'admin' && req.user.id !== id) {
       throw new ForbiddenException('자신의 계정만 삭제할 수 있습니다.');
     }
@@ -91,9 +96,8 @@ export class UsersController {
   @Patch(':id/role')
   updateUserRole(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateUserRoleDto: UpdateUserRoleDto, // DTO 전체를 받도록 수정
+    @Body() updateUserRoleDto: UpdateUserRoleDto,
   ) {
-    // DTO에서 검증된 role 값을 서비스로 전달
     return this.usersService.updateUserRole(id, updateUserRoleDto.role);
   }
 }
