@@ -27,9 +27,4 @@ export class AppService implements OnModuleInit {
       throw error;
     }
   }
-
-  // 기본 "Hello World" 메시지를 반환하는 메서드
-  getHello(): string {
-    return 'Welcome to the Book Market API!';
-  }
 }
