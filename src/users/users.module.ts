@@ -7,11 +7,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config'; // 환경 설정�
 import { UsersController } from './users.controller'; // 사용자 관련 컨트롤러
 import { UsersService } from './users.service'; // 사용자 관련 로직을 처리하는 서비스
 import { User } from './user.entity'; // 사용자 데이터베이스 테이블을 나타내는 엔터티
+import { RefreshToken } from './refresh-token.entity'; // 리프레시 토큰 데이터베이스 테이블을 나타내는 엔터티
 
 @Module({
   imports: [
-    // 1. User 엔터티에 대한 Repository를 주입할 수 있도록 설정
-    TypeOrmModule.forFeature([User]), // [1] User 엔터티와 매핑된 Repository를 주입
+    // 1. User 및 RefreshToken 엔터티에 대한 Repository를 주입할 수 있도록 설정
+    TypeOrmModule.forFeature([User, RefreshToken]), // [1] User, RefreshToken 엔터티와 매핑된 Repository를 주입
 
     // 2. JWT 모듈 설정
     JwtModule.registerAsync({

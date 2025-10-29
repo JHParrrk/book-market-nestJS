@@ -8,9 +8,16 @@
 
 ### 1. 데이터베이스 변경 (Database Changes)
 
-**User Entity** (`src/users/user.entity.ts`)
-- `refresh_token` 컬럼 추가 (타입: text, nullable)
+**RefreshToken Entity** (`src/users/refresh-token.entity.ts`)
+- 별도의 `refresh_tokens` 테이블 사용
+- 컬럼:
+  - `id`: Primary key (자동 증가)
+  - `user_id`: 사용자 ID (Foreign key to users)
+  - `token`: 해싱된 리프레시 토큰 (text)
+  - `expires_at`: 만료 시간 (datetime)
+  - `created_at`: 생성 시간 (datetime)
 - 리프레시 토큰은 bcrypt로 해싱되어 저장됩니다
+- 사용자가 삭제되면 관련 리프레시 토큰도 자동 삭제 (CASCADE)
 
 ### 2. 토큰 생성 및 저장 (Token Generation & Storage)
 
@@ -111,12 +118,28 @@ REFRESH_SECRET_KEY=your_refresh_secret_key
 | POST | /users/refresh | ❌ | 토큰 갱신 |
 | POST | /users/logout | ✅ | 로그아웃 (리프레시 토큰 무효화) |
 
-## 데이터베이스 마이그레이션 (Database Migration)
+## 데이터베이스 스키마 (Database Schema)
 
-`refresh_token` 컬럼을 기존 데이터베이스에 추가해야 합니다:
+`refresh_tokens` 테이블은 이미 데이터베이스에 존재해야 합니다:
 
 ```sql
-ALTER TABLE users ADD COLUMN refresh_token TEXT NULL;
+CREATE TABLE `refresh_tokens` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `token` text NOT NULL,
+  `expires_at` datetime NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  CONSTRAINT `fk_refresh_tokens_users` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
 ```
 
-**참고:** TypeORM을 사용하는 경우, 엔터티 변경 후 자동으로 동기화되거나 마이그레이션을 실행해야 합니다.
+**참고:** TypeORM의 엔터티는 기존 데이터베이스 스키마와 매핑됩니다.
+
+## 토큰 관리 특징 (Token Management Features)
+
+1. **단일 활성 토큰**: 로그인 시 사용자의 기존 리프레시 토큰을 모두 삭제하고 새로운 토큰을 생성합니다
+2. **토큰 로테이션**: 리프레시 시 기존 토큰을 삭제하고 새로운 토큰 쌍을 발급합니다
+3. **만료 시간 검증**: 리프레시 시 데이터베이스의 `expires_at` 필드를 확인합니다
+4. **자동 정리**: `cleanupExpiredTokens()` 메서드를 통해 만료된 토큰을 주기적으로 삭제할 수 있습니다

@@ -30,9 +30,6 @@ export class User {
   @Column({ length: 100, default: 'member' }) // 역할 컬럼 (기본값: 'member')
   role: string;
 
-  @Column({ type: 'text', nullable: true }) // 리프레시 토큰 컬럼 (NULL 허용)
-  refresh_token?: string;
-
   @CreateDateColumn({ type: 'timestamp' }) // 생성 날짜 컬럼
   created_at: Date;
 
