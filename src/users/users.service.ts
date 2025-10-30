@@ -8,15 +8,35 @@ import {
 import { InjectRepository } from '@nestjs/typeorm'; // TypeORM Repository 주입을 위한 데코레이터
 import { Repository } from 'typeorm'; // TypeORM의 Repository를 사용
 import { User } from './user.entity'; // 사용자 엔터티 정의
+import { RefreshToken } from './refresh-token.entity'; // 리프레시 토큰 엔터티 정의
 import * as bcrypt from 'bcrypt'; // 비밀번호 해싱과 비교를 위한 bcrypt 라이브러리
 import { JwtService } from '@nestjs/jwt'; // JWT 생성 및 검증을 위한 NestJS 서비스
+import { ConfigService } from '@nestjs/config'; // 환경 변수 관리를 위한 ConfigService
+import { LessThan, MoreThan } from 'typeorm'; // TypeORM의 쿼리 조건 연산자
+
+// 상수 정의
+const REFRESH_TOKEN_EXPIRY_DAYS = 7; // 리프레시 토큰 만료 기간 (일)
+
 @Injectable() // 이 클래스가 NestJS의 의존성 주입 시스템에서 관리되는 서비스임을 나타냄
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>, // User 엔터티와 연결된 Repository 주입
+    @InjectRepository(RefreshToken)
+    private readonly refreshTokenRepository: Repository<RefreshToken>, // RefreshToken 엔터티와 연결된 Repository 주입
     private readonly jwtService: JwtService, // JWT 서비스 주입
+    private readonly configService: ConfigService, // ConfigService 주입
   ) {}
+
+  /**
+   * 리프레시 토큰 만료 시간 계산
+   * @private
+   */
+  private getRefreshTokenExpirationDate(): Date {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+    return expiresAt;
+  }
 
   /**
    * 회원가입
@@ -53,7 +73,10 @@ export class UsersService {
    * @param email
    * @param pass
    */
-  async login(email: string, pass: string): Promise<{ accessToken: string }> {
+  async login(
+    email: string,
+    pass: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const user = await this.userRepository.findOneBy({ email }); // 이메일로 사용자 조회
     if (!user) {
       throw new UnauthorizedException(
@@ -69,8 +92,31 @@ export class UsersService {
     }
 
     const payload = { sub: user.id, email: user.email, role: user.role }; // JWT 페이로드 생성
+
+    // 액세스 토큰 생성
+    const accessToken = this.jwtService.sign(payload);
+
+    // 리프레시 토큰 생성
+    const refreshToken = this.jwtService.sign(payload, {
+      secret: this.configService.getOrThrow<string>('REFRESH_SECRET_KEY'),
+      expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
+    });
+
+    // 기존 리프레시 토큰 삭제 (하나의 사용자는 하나의 활성 리프레시 토큰만 가짐)
+    await this.refreshTokenRepository.delete({ user_id: user.id });
+
+    // 리프레시 토큰을 해싱하여 refresh_tokens 테이블에 저장
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+
+    await this.refreshTokenRepository.save({
+      user_id: user.id,
+      token: hashedRefreshToken,
+      expires_at: this.getRefreshTokenExpirationDate(),
+    });
+
     return {
-      accessToken: this.jwtService.sign(payload), // JWT 액세스 토큰 생성 및 반환
+      accessToken,
+      refreshToken,
     };
   }
 
@@ -141,5 +187,94 @@ export class UsersService {
     if (result.affected === 0) {
       throw new NotFoundException('삭제할 사용자를 찾을 수 없습니다.'); // 삭제할 사용자가 없는 경우 예외 처리
     }
+  }
+
+  /**
+   * 리프레시 토큰으로 액세스 토큰 갱신
+   * @param refreshToken
+   */
+  async refreshAccessToken(
+    refreshToken: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    try {
+      // 리프레시 토큰 검증
+      const payload = this.jwtService.verify<{
+        sub: number;
+        email: string;
+        role: string;
+      }>(refreshToken, {
+        secret: this.configService.getOrThrow<string>('REFRESH_SECRET_KEY'),
+      });
+
+      // 사용자 정보 조회
+      const user = await this.userRepository.findOneBy({ id: payload.sub });
+      if (!user) {
+        throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
+      }
+
+      // DB에서 만료되지 않은 리프레시 토큰 조회 (성능 최적화)
+      const storedToken = await this.refreshTokenRepository.findOne({
+        where: {
+          user_id: user.id,
+          expires_at: MoreThan(new Date()),
+        },
+      });
+
+      if (!storedToken) {
+        throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
+      }
+
+      // 저장된 리프레시 토큰과 비교
+      const isMatch = await bcrypt.compare(refreshToken, storedToken.token);
+      if (!isMatch) {
+        throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
+      }
+
+      // 새로운 토큰 생성
+      const newPayload = { sub: user.id, email: user.email, role: user.role };
+      const newAccessToken = this.jwtService.sign(newPayload);
+      const newRefreshToken = this.jwtService.sign(newPayload, {
+        secret: this.configService.getOrThrow<string>('REFRESH_SECRET_KEY'),
+        expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
+      });
+
+      // 기존 토큰 삭제 (토큰 로테이션)
+      await this.refreshTokenRepository.delete(storedToken.id);
+
+      // 새로운 리프레시 토큰을 해싱하여 DB에 저장
+      const hashedRefreshToken = await bcrypt.hash(newRefreshToken, 10);
+
+      await this.refreshTokenRepository.save({
+        user_id: user.id,
+        token: hashedRefreshToken,
+        expires_at: this.getRefreshTokenExpirationDate(),
+      });
+
+      return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      };
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (error) {
+      throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
+    }
+  }
+
+  /**
+   * 로그아웃 - 리프레시 토큰 무효화
+   * @param userId
+   */
+  async logout(userId: number): Promise<void> {
+    // 해당 사용자의 모든 리프레시 토큰 삭제
+    await this.refreshTokenRepository.delete({ user_id: userId });
+  }
+
+  /**
+   * 만료된 리프레시 토큰 정리 (스케줄러에서 주기적으로 호출)
+   */
+  async cleanupExpiredTokens(): Promise<void> {
+    await this.refreshTokenRepository.delete({
+      expires_at: LessThan(new Date()),
+    });
   }
 }

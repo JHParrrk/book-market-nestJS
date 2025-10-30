@@ -21,7 +21,7 @@ import { JwtStrategy } from './jwt.strategy'; // [6] JWT 인증 로직을 정의
     }),
   ],
   providers: [JwtStrategy], // [15] JwtStrategy를 인증 전략으로 등록합니다.
-  exports: [PassportModule], // [16] PassportModule을 내보내 다른 모듈에서 사용할 수 있도록 설정합니다.
+  exports: [PassportModule, JwtModule], // [16] PassportModule과 JwtModule을 내보내 다른 모듈에서 사용할 수 있도록 설정합니다.
 })
 export class AuthModule {} // [17] AuthModule 클래스를 정의합니다.
 //    - 이 모듈은 JWT 기반 인증을 처리하기 위한 설정과 전략을 포함합니다.

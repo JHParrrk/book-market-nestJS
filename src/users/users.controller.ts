@@ -40,6 +40,12 @@ export class UsersController {
     return this.usersService.login(loginData.email, loginData.password); // 로그인 로직 호출
   }
 
+  @Post('refresh') // POST 요청을 'users/refresh' 경로로 매핑합니다.
+  refresh(@Body('refreshToken') refreshToken: string) {
+    // 요청 본문에서 리프레시 토큰을 받아 처리
+    return this.usersService.refreshAccessToken(refreshToken); // 토큰 갱신 로직 호출
+  }
+
   // --- 인증이 필요한 라우트 ---
   @UseGuards(JwtAuthGuard) // JWT 인증이 필요한 라우트입니다.
   @Get('me') // GET 요청을 'users/me' 경로로 매핑합니다.
@@ -98,5 +104,12 @@ export class UsersController {
     @Body() updateUserRoleDto: UpdateUserRoleDto, // 요청 본문을 DTO로 매핑
   ) {
     return this.usersService.updateUserRole(id, updateUserRoleDto.role); // 사용자 역할 수정 로직 호출
+  }
+
+  @UseGuards(JwtAuthGuard) // JWT 인증이 필요한 라우트입니다.
+  @Post('logout') // POST 요청을 'users/logout' 경로로 매핑합니다.
+  logout(@Req() req: RequestWithUser) {
+    // 인증된 사용자 정보가 포함된 요청 객체
+    return this.usersService.logout(req.user.id); // 로그아웃 로직 호출
   }
 }
