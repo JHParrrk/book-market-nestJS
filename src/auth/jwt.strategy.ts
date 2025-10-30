@@ -44,3 +44,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return user; // [19] 사용자 정보를 반환하며, 이 값은 req.user에 저장됩니다.
   }
 }
+
+// LocalStrategy 로컬로그인? 알아보기
+// PassportStrategy 확장
+// JWT 토큰 추출
+// ConfigService 환경변수
+// validate 메서드에서 사용자 검증 및 정보 반환
