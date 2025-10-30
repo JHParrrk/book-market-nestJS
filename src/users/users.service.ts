@@ -12,7 +12,11 @@ import { RefreshToken } from './refresh-token.entity'; // 리프레시 토큰 �
 import * as bcrypt from 'bcrypt'; // 비밀번호 해싱과 비교를 위한 bcrypt 라이브러리
 import { JwtService } from '@nestjs/jwt'; // JWT 생성 및 검증을 위한 NestJS 서비스
 import { ConfigService } from '@nestjs/config'; // 환경 변수 관리를 위한 ConfigService
-import { LessThan } from 'typeorm'; // TypeORM의 쿼리 조건 연산자
+import { LessThan, MoreThan } from 'typeorm'; // TypeORM의 쿼리 조건 연산자
+
+// 상수 정의
+const REFRESH_TOKEN_EXPIRY_DAYS = 7; // 리프레시 토큰 만료 기간 (일)
+
 @Injectable() // 이 클래스가 NestJS의 의존성 주입 시스템에서 관리되는 서비스임을 나타냄
 export class UsersService {
   constructor(
@@ -23,6 +27,16 @@ export class UsersService {
     private readonly jwtService: JwtService, // JWT 서비스 주입
     private readonly configService: ConfigService, // ConfigService 주입
   ) {}
+
+  /**
+   * 리프레시 토큰 만료 시간 계산
+   * @private
+   */
+  private getRefreshTokenExpirationDate(): Date {
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+    return expiresAt;
+  }
 
   /**
    * 회원가입
@@ -82,10 +96,10 @@ export class UsersService {
     // 액세스 토큰 생성
     const accessToken = this.jwtService.sign(payload);
 
-    // 리프레시 토큰 생성 (7일 만료)
+    // 리프레시 토큰 생성
     const refreshToken = this.jwtService.sign(payload, {
       secret: this.configService.getOrThrow<string>('REFRESH_SECRET_KEY'),
-      expiresIn: '7d',
+      expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
     });
 
     // 기존 리프레시 토큰 삭제 (하나의 사용자는 하나의 활성 리프레시 토큰만 가짐)
@@ -93,13 +107,11 @@ export class UsersService {
 
     // 리프레시 토큰을 해싱하여 refresh_tokens 테이블에 저장
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7일 후 만료
 
     await this.refreshTokenRepository.save({
       user_id: user.id,
       token: hashedRefreshToken,
-      expires_at: expiresAt,
+      expires_at: this.getRefreshTokenExpirationDate(),
     });
 
     return {
@@ -200,34 +212,21 @@ export class UsersService {
         throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
       }
 
-      // DB에서 리프레시 토큰 조회 및 만료 확인
-      const storedTokens = await this.refreshTokenRepository.find({
-        where: { user_id: user.id },
+      // DB에서 만료되지 않은 리프레시 토큰 조회 (성능 최적화)
+      const storedToken = await this.refreshTokenRepository.findOne({
+        where: {
+          user_id: user.id,
+          expires_at: MoreThan(new Date()),
+        },
       });
 
-      if (storedTokens.length === 0) {
+      if (!storedToken) {
         throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
       }
 
-      // 저장된 리프레시 토큰들과 비교하여 일치하는 것 찾기
-      let validToken: RefreshToken | null = null;
-      for (const stored of storedTokens) {
-        const isMatch = await bcrypt.compare(refreshToken, stored.token);
-        if (isMatch) {
-          // 만료 시간 확인
-          if (new Date() > stored.expires_at) {
-            // 만료된 토큰은 삭제
-            await this.refreshTokenRepository.delete(stored.id);
-            throw new UnauthorizedException(
-              '만료된 리프레시 토큰입니다. 다시 로그인해주세요.',
-            );
-          }
-          validToken = stored;
-          break;
-        }
-      }
-
-      if (!validToken) {
+      // 저장된 리프레시 토큰과 비교
+      const isMatch = await bcrypt.compare(refreshToken, storedToken.token);
+      if (!isMatch) {
         throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
       }
 
@@ -236,21 +235,19 @@ export class UsersService {
       const newAccessToken = this.jwtService.sign(newPayload);
       const newRefreshToken = this.jwtService.sign(newPayload, {
         secret: this.configService.getOrThrow<string>('REFRESH_SECRET_KEY'),
-        expiresIn: '7d',
+        expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
       });
 
       // 기존 토큰 삭제 (토큰 로테이션)
-      await this.refreshTokenRepository.delete(validToken.id);
+      await this.refreshTokenRepository.delete(storedToken.id);
 
       // 새로운 리프레시 토큰을 해싱하여 DB에 저장
       const hashedRefreshToken = await bcrypt.hash(newRefreshToken, 10);
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7); // 7일 후 만료
 
       await this.refreshTokenRepository.save({
         user_id: user.id,
         token: hashedRefreshToken,
-        expires_at: expiresAt,
+        expires_at: this.getRefreshTokenExpirationDate(),
       });
 
       return {
