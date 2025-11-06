@@ -4,23 +4,21 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   JoinColumn,
-  Unique,
 } from 'typeorm';
 
-@Entity('carts')
-@Unique(['user', 'book'])
-export class Cart {
+@Entity('order_details')
+export class OrderDetail {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne('User', 'cartItems', {
+  @ManyToOne('Order', 'orderDetails', {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
-  @JoinColumn({ name: 'user_id' })
-  user: any;
+  @JoinColumn({ name: 'order_id' })
+  order: any;
 
-  @ManyToOne('Book', 'cartItems', {
+  @ManyToOne('Book', 'orderDetails', {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
@@ -29,4 +27,7 @@ export class Cart {
 
   @Column()
   quantity: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  price: number;
 }

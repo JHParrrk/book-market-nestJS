@@ -6,8 +6,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config'; // 환경 설정�
 
 import { UsersController } from './users.controller'; // 사용자 관련 컨트롤러
 import { UsersService } from './users.service'; // 사용자 관련 로직을 처리하는 서비스
-import { User } from './user.entity'; // 사용자 데이터베이스 테이블을 나타내는 엔터티
-import { RefreshToken } from './refresh-token.entity'; // 리프레시 토큰 데이터베이스 테이블을 나타내는 엔터티
+import { User } from './user.entity/user.entity'; // 사용자 데이터베이스 테이블을 나타내는 엔터티
+import { RefreshToken } from './user.entity/refresh-token.entity'; // 리프레시 토큰 데이터베이스 테이블을 나타내는 엔터티
 
 @Module({
   imports: [

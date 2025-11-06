@@ -11,15 +11,16 @@ import {
   Req,
   ForbiddenException,
   ParseIntPipe,
+  BadRequestException,
 } from '@nestjs/common'; // NestJS의 주요 데코레이터와 예외 처리, 유틸리티를 가져옵니다.
 import { UsersService } from './users.service'; // 사용자 관련 로직을 처리하는 서비스
-import { User } from './user.entity'; // 사용자 엔터티 정의
+import { User } from './user.entity/user.entity'; // 사용자 엔터티 정의
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'; // JWT 인증 가드
 import { RolesGuard } from '../auth/roles.guard'; // 역할 기반 접근 제어 가드
 import { Roles } from '../auth/roles.decorator'; // 역할 데코레이터
-import { CreateUserDto } from './dto/create-user.dto'; // 사용자 생성 시 데이터 유효성 검사에 사용할 DTO
-import { UpdateUserDto } from './dto/update-user.dto'; // 사용자 정보 수정 시 사용할 DTO
-import { UpdateUserRoleDto } from './dto/update-user-role.dto'; // 사용자 역할 수정 시 사용할 DTO
+import { CreateUserDto } from './user.dto/create-user.dto'; // 사용자 생성 시 데이터 유효성 검사에 사용할 DTO
+import { UpdateUserDto } from './user.dto/update-user.dto'; // 사용자 정보 수정 시 사용할 DTO
+import { UpdateUserRoleDto } from './user.dto/update-user-role.dto'; // 사용자 역할 수정 시 사용할 DTO
 import type { RequestWithUser } from '../common/interfaces/request-with-user.interface'; // 사용자 정보를 포함하는 커스텀 요청 타입
 
 // 'users'라는 경로로 접근 가능한 컨트롤러를 정의합니다.
@@ -30,13 +31,20 @@ export class UsersController {
   // --- 인증이 필요 없는 라우트 ---
   @Post('register') // POST 요청을 'users/register' 경로로 매핑합니다.
   register(@Body() createUserDto: CreateUserDto) {
-    // 요청 본문(@Body)을 DTO로 매핑하여 유효성 검사를 수행합니다.
-    return this.usersService.register(createUserDto); // 사용자 등록 로직 호출
+    const userData = {
+      ...createUserDto,
+      phone_number: createUserDto.phone_number || '', // 기본값 처리
+    };
+    return this.usersService.register(userData); // 사용자 등록 로직 호출
   }
 
   @Post('login') // POST 요청을 'users/login' 경로로 매핑합니다.
   login(@Body() loginData: Pick<User, 'email' | 'password'>) {
-    // 이메일과 비밀번호만 포함한 요청 본문을 처리
+    if (!loginData.email || !loginData.password) {
+      throw new BadRequestException(
+        '이메일과 비밀번호는 필수 입력 항목입니다.',
+      );
+    }
     return this.usersService.login(loginData.email, loginData.password); // 로그인 로직 호출
   }
 

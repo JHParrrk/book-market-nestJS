@@ -7,8 +7,8 @@ import {
 } from '@nestjs/common'; // NestJS에서 제공하는 예외 처리 클래스
 import { InjectRepository } from '@nestjs/typeorm'; // TypeORM Repository 주입을 위한 데코레이터
 import { Repository } from 'typeorm'; // TypeORM의 Repository를 사용
-import { User } from './user.entity'; // 사용자 엔터티 정의
-import { RefreshToken } from './refresh-token.entity'; // 리프레시 토큰 엔터티 정의
+import { User } from './user.entity/user.entity'; // 사용자 엔터티 정의
+import { RefreshToken } from './user.entity/refresh-token.entity'; // 리프레시 토큰 엔터티 정의
 import * as bcrypt from 'bcrypt'; // 비밀번호 해싱과 비교를 위한 bcrypt 라이브러리
 import { JwtService } from '@nestjs/jwt'; // JWT 생성 및 검증을 위한 NestJS 서비스
 import { ConfigService } from '@nestjs/config'; // 환경 변수 관리를 위한 ConfigService
@@ -45,7 +45,7 @@ export class UsersService {
   async register(
     userData: Pick<
       User,
-      'email' | 'password' | 'name' | 'address' | 'phone_number'
+      'email' | 'password' | 'name' | 'address' | 'phoneNumber'
     >,
   ): Promise<Omit<User, 'password'>> {
     const existingUser = await this.userRepository.findOneBy({
@@ -53,6 +53,10 @@ export class UsersService {
     });
     if (existingUser) {
       throw new ConflictException('이미 존재하는 이메일입니다.');
+    }
+
+    if (!userData.password) {
+      throw new UnauthorizedException('비밀번호를 입력해주세요.');
     }
 
     const hashedPassword = await bcrypt.hash(userData.password, 10); // 비밀번호 해싱
@@ -78,10 +82,10 @@ export class UsersService {
     pass: string,
   ): Promise<{ accessToken: string; refreshToken: string }> {
     const user = await this.userRepository.findOneBy({ email }); // 이메일로 사용자 조회
-    if (!user) {
+    if (!user || !user.password) {
       throw new UnauthorizedException(
         '이메일 또는 비밀번호가 유효하지 않습니다.',
-      ); // 사용자 없음 예외 처리
+      ); // 사용자 없음 또는 비밀번호 없음 예외 처리
     }
 
     const isPasswordValid = await bcrypt.compare(pass, user.password);
@@ -98,26 +102,22 @@ export class UsersService {
 
     // 리프레시 토큰 생성
     const refreshToken = this.jwtService.sign(payload, {
-      secret: this.configService.getOrThrow<string>('REFRESH_SECRET_KEY'),
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
     });
 
-    // 기존 리프레시 토큰 삭제 (하나의 사용자는 하나의 활성 리프레시 토큰만 가짐)
-    await this.refreshTokenRepository.delete({ user_id: user.id });
+    // 기존 리프레시 토큰 삭제
+    await this.refreshTokenRepository.delete({ user: { id: user.id } });
 
-    // 리프레시 토큰을 해싱하여 refresh_tokens 테이블에 저장
-    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
-
-    await this.refreshTokenRepository.save({
-      user_id: user.id,
-      token: hashedRefreshToken,
-      expires_at: this.getRefreshTokenExpirationDate(),
+    // 새 리프레시 토큰 저장
+    const newRefreshToken = this.refreshTokenRepository.create({
+      user,
+      token: refreshToken,
+      expiresAt: this.getRefreshTokenExpirationDate(),
     });
+    await this.refreshTokenRepository.save(newRefreshToken);
 
-    return {
-      accessToken,
-      refreshToken,
-    };
+    return { accessToken, refreshToken };
   }
 
   /**
@@ -130,9 +130,9 @@ export class UsersService {
         'email',
         'name',
         'address',
-        'phone_number',
+        'phoneNumber',
         'role',
-        'created_at',
+        'createdAt',
       ],
     }); // 비밀번호 제외하고 모든 사용자 정보 반환
   }
@@ -215,8 +215,8 @@ export class UsersService {
       // DB에서 만료되지 않은 리프레시 토큰 조회 (성능 최적화)
       const storedToken = await this.refreshTokenRepository.findOne({
         where: {
-          user_id: user.id,
-          expires_at: MoreThan(new Date()),
+          user: { id: user.id },
+          expiresAt: MoreThan(new Date()),
         },
       });
 
@@ -260,21 +260,39 @@ export class UsersService {
     }
   }
 
-  /**
-   * 로그아웃 - 리프레시 토큰 무효화
-   * @param userId
-   */
-  async logout(userId: number): Promise<void> {
-    // 해당 사용자의 모든 리프레시 토큰 삭제
-    await this.refreshTokenRepository.delete({ user_id: userId });
+  private async validateRefreshToken(
+    userId: number,
+    token: string,
+  ): Promise<RefreshToken> {
+    const refreshToken = await this.refreshTokenRepository.findOne({
+      where: {
+        user: { id: userId },
+        token,
+        expiresAt: MoreThan(new Date()),
+      },
+    });
+
+    if (!refreshToken) {
+      throw new UnauthorizedException('리프레시 토큰이 유효하지 않습니다.');
+    }
+
+    return refreshToken;
   }
 
   /**
-   * 만료된 리프레시 토큰 정리 (스케줄러에서 주기적으로 호출)
+   * 로그아웃
+   * @param userId
    */
-  async cleanupExpiredTokens(): Promise<void> {
+  async logout(userId: number): Promise<void> {
+    await this.refreshTokenRepository.delete({ user: { id: userId } });
+  }
+
+  /**
+   * 만료된 리프레시 토큰 정리
+   */
+  async cleanupExpiredRefreshTokens(): Promise<void> {
     await this.refreshTokenRepository.delete({
-      expires_at: LessThan(new Date()),
+      expiresAt: LessThan(new Date()),
     });
   }
 }

@@ -4,7 +4,7 @@ import { PassportStrategy } from '@nestjs/passport'; // [2] Passport 전략을 �
 import { ExtractJwt, Strategy } from 'passport-jwt'; // [3] JWT 처리 및 추출 유틸리티
 import { ConfigService } from '@nestjs/config'; // [4] 환경 변수 관리를 위한 ConfigService
 import { UsersService } from '../users/users.service'; // [5] 사용자 정보를 처리하기 위한 UsersService
-import { User } from '../users/user.entity'; // [6] 사용자 엔터티를 가져옵니다.
+import { User } from '@/users/user.entity/user.entity'; // [6] 사용자 엔터티를 가져옵니다.
 
 @Injectable() // [7] JwtStrategy를 NestJS의 의존성 주입 컨테이너에서 관리될 수 있도록 설정합니다.
 export class JwtStrategy extends PassportStrategy(Strategy) {

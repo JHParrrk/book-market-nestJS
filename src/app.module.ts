@@ -7,8 +7,19 @@ import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
-import { User } from './users/user.entity';
-import { RefreshToken } from './users/refresh-token.entity';
+import { User } from './users/user.entity/user.entity';
+import { RefreshToken } from './users/user.entity/refresh-token.entity';
+// import { Order } from './orders/order.entity/order.entity';
+// import { Cart } from './carts/cart.entity/cart.entity';
+// import { Review } from './reviews/review.entity/review.entity';
+// import { Book } from './books/book.entity/book.entity';
+// import { Category } from './categories/category.entity/category.entity';
+
+// import { BooksModule } from './books/books.module';
+// import { CategoriesModule } from './categories/categories.module';
+// import { OrdersModule } from './orders/orders.module';
+// import { CartsModule } from './carts/carts.module';
+// import { ReviewsModule } from './reviews/reviews.module';
 import { AuthModule } from './auth/auth.module';
 
 @Module({
@@ -27,7 +38,10 @@ import { AuthModule } from './auth/auth.module';
           username: configService.get<string>('DB_USERNAME'),
           password: configService.get<string>('DB_PASSWORD'),
           database: configService.get<string>('DB_DATABASE'),
-          entities: [User, RefreshToken],
+          entities: [
+            User,
+            RefreshToken /* Order, Cart, Review, Book, Category */,
+          ],
           synchronize: configService.get<string>('NODE_ENV') !== 'production',
         };
 
@@ -42,6 +56,11 @@ import { AuthModule } from './auth/auth.module';
     }),
     UsersModule,
     AuthModule,
+    // BooksModule,
+    // CategoriesModule,
+    // OrdersModule,
+    // CartsModule,
+    // ReviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
