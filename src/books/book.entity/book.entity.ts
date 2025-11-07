@@ -10,19 +10,24 @@ import {
   OneToMany,
   JoinColumn,
 } from 'typeorm';
+import { Category } from '@/categories/category.entity/category.entity';
+import { BookDetail } from './book_detail.entity';
+import { Cart } from '@/carts/cart.entity/cart.entity';
+import { OrderDetail } from '@/orders/order.entity/order_detail.entity';
+import { Review } from '@/reviews/review.entity/review.entity';
+import { BookLike } from './book_like.entity';
 
 @Entity('books')
 export class Book {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // 👇 모든 관계를 문자열 기반으로 수정합니다.
-  @ManyToOne('Category', 'books', {
+  @ManyToOne(() => Category, (category) => category.books, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({ name: 'category_id' })
-  category: any;
+  category: Category;
 
   @Column({ length: 255 })
   title: string;
@@ -30,7 +35,6 @@ export class Book {
   @Column({ length: 255 })
   author: string;
 
-  // ... (다른 컬럼들은 변경 없음)
   @Column({ length: 255, nullable: true, name: 'image_url' })
   imageUrl?: string;
 
@@ -43,11 +47,11 @@ export class Book {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   price: number;
 
-  @Column({ type: 'int', nullable: true, name: 'average_rating' })
-  averageRating?: number;
+  @Column({ type: 'int', default: 0, name: 'average_rating' })
+  averageRating: number;
 
-  @Column({ type: 'int', nullable: true, name: 'review_count' })
-  reviewCount?: number;
+  @Column({ type: 'int', default: 0, name: 'review_count' })
+  reviewCount: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -58,19 +62,20 @@ export class Book {
   @DeleteDateColumn({ name: 'deleted_at', nullable: true })
   deletedAt?: Date;
 
-  // 👇 나머지 관계들도 모두 문자열 기반으로 수정합니다.
-  @OneToOne('BookDetail', 'book')
-  bookDetail: any;
+  @OneToOne(() => BookDetail, (bookDetail) => bookDetail.book, {
+    cascade: true,
+  })
+  bookDetail: BookDetail;
 
-  @OneToMany('Cart', 'book')
-  cartItems: any[];
+  @OneToMany(() => Cart, (cart) => cart.book)
+  cartItems: Cart[];
 
-  @OneToMany('OrderDetail', 'book')
-  orderDetails: any[];
+  @OneToMany(() => OrderDetail, (orderDetail) => orderDetail.book)
+  orderDetails: OrderDetail[];
 
-  @OneToMany('Review', 'book')
-  reviews: any[];
+  @OneToMany(() => Review, (review) => review.book)
+  reviews: Review[];
 
-  @OneToMany('BookLike', 'book')
-  likes: any[];
+  @OneToMany(() => BookLike, (bookLike) => bookLike.book)
+  likes: BookLike[];
 }

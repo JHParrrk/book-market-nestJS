@@ -7,14 +7,13 @@ import {
   OneToOne,
   JoinColumn,
 } from 'typeorm';
-// import { Book } from './book.entity'; // 🚨 Import 제거
+import { Book } from '@/books/book.entity/book.entity';
 
 @Entity('book_details')
 export class BookDetail {
   @PrimaryColumn({ name: 'book_id' })
   bookId: number;
 
-  // ... (컬럼 변경 없음)
   @Column({ type: 'text', nullable: true })
   description?: string;
 
@@ -33,11 +32,10 @@ export class BookDetail {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  // 👇 관계를 문자열 기반으로 수정
-  @OneToOne('Book', 'bookDetail', {
+  @OneToOne(() => Book, (book) => book.bookDetail, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({ name: 'book_id' })
-  book: any;
+  book: Book;
 }

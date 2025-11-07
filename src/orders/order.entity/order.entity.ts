@@ -8,19 +8,20 @@ import {
   OneToMany,
   JoinColumn,
 } from 'typeorm';
+import { User } from '@/users/user.entity/user.entity';
+import { OrderDetail } from '@/orders/order.entity/order_detail.entity';
 
 @Entity('orders')
 export class Order {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // 👇 콜백 함수 대신 프로퍼티 이름 'orders'를 문자열로 전달합니다.
-  @ManyToOne('User', 'orders', {
+  @ManyToOne(() => User, (user) => user.orders, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({ name: 'user_id' })
-  user: any;
+  user: User;
 
   @Column({ type: 'text', name: 'delivery_info' })
   deliveryInfo: string;
@@ -37,6 +38,6 @@ export class Order {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  @OneToMany('OrderDetail', 'order')
-  orderDetails: any[];
+  @OneToMany(() => OrderDetail, (orderDetail) => orderDetail.order)
+  orderDetails: OrderDetail[];
 }

@@ -1,36 +1,39 @@
-// 사용자 관련 서비스 로직을 처리하는 NestJS 서비스
 import {
   Injectable,
   ConflictException,
   UnauthorizedException,
   NotFoundException,
-} from '@nestjs/common'; // NestJS에서 제공하는 예외 처리 클래스
-import { InjectRepository } from '@nestjs/typeorm'; // TypeORM Repository 주입을 위한 데코레이터
-import { Repository } from 'typeorm'; // TypeORM의 Repository를 사용
-import { User } from './user.entity/user.entity'; // 사용자 엔터티 정의
-import { RefreshToken } from './user.entity/refresh-token.entity'; // 리프레시 토큰 엔터티 정의
-import * as bcrypt from 'bcrypt'; // 비밀번호 해싱과 비교를 위한 bcrypt 라이브러리
-import { JwtService } from '@nestjs/jwt'; // JWT 생성 및 검증을 위한 NestJS 서비스
-import { ConfigService } from '@nestjs/config'; // 환경 변수 관리를 위한 ConfigService
-import { LessThan, MoreThan } from 'typeorm'; // TypeORM의 쿼리 조건 연산자
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, MoreThan, LessThan } from 'typeorm';
+import { User } from './user.entity/user.entity';
+import { RefreshToken } from './user.entity/refresh-token.entity';
+import * as bcrypt from 'bcrypt';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 // 상수 정의
-const REFRESH_TOKEN_EXPIRY_DAYS = 7; // 리프레시 토큰 만료 기간 (일)
+const REFRESH_TOKEN_EXPIRY_DAYS = 7;
 
-@Injectable() // 이 클래스가 NestJS의 의존성 주입 시스템에서 관리되는 서비스임을 나타냄
+interface JwtPayload {
+  sub: number;
+  email: string;
+  role: string;
+}
+
+@Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
-    private readonly userRepository: Repository<User>, // User 엔터티와 연결된 Repository 주입
+    private readonly userRepository: Repository<User>,
     @InjectRepository(RefreshToken)
-    private readonly refreshTokenRepository: Repository<RefreshToken>, // RefreshToken 엔터티와 연결된 Repository 주입
-    private readonly jwtService: JwtService, // JWT 서비스 주입
-    private readonly configService: ConfigService, // ConfigService 주입
+    private readonly refreshTokenRepository: Repository<RefreshToken>,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
    * 리프레시 토큰 만료 시간 계산
-   * @private
    */
   private getRefreshTokenExpirationDate(): Date {
     const expiresAt = new Date();
@@ -40,7 +43,6 @@ export class UsersService {
 
   /**
    * 회원가입
-   * @param userData - email, password, name 등 사용자 정보
    */
   async register(
     userData: Pick<
@@ -49,7 +51,7 @@ export class UsersService {
     >,
   ): Promise<Omit<User, 'password'>> {
     const existingUser = await this.userRepository.findOneBy({
-      email: userData.email, // 중복 이메일 확인
+      email: userData.email,
     });
     if (existingUser) {
       throw new ConflictException('이미 존재하는 이메일입니다.');
@@ -59,65 +61,103 @@ export class UsersService {
       throw new UnauthorizedException('비밀번호를 입력해주세요.');
     }
 
-    const hashedPassword = await bcrypt.hash(userData.password, 10); // 비밀번호 해싱
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
 
     const newUser = this.userRepository.create({
       ...userData,
-      password: hashedPassword, // 해싱된 비밀번호 저장
+      password: hashedPassword,
     });
 
-    const savedUser = await this.userRepository.save(newUser); // 사용자 정보 저장
+    const savedUser = await this.userRepository.save(newUser);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password, ...result } = savedUser; // 비밀번호를 제외하고 반환
+    const { password, ...result } = savedUser;
     return result;
   }
 
   /**
-   * 로그인
-   * @param email
-   * @param pass
+   * 로그인 (보안 정책 반영) - 진단용 로그 추가
    */
   async login(
     email: string,
     pass: string,
+    ipAddress: string,
+    userAgent: string,
   ): Promise<{ accessToken: string; refreshToken: string }> {
-    const user = await this.userRepository.findOneBy({ email }); // 이메일로 사용자 조회
-    if (!user || !user.password) {
-      throw new UnauthorizedException(
-        '이메일 또는 비밀번호가 유효하지 않습니다.',
-      ); // 사용자 없음 또는 비밀번호 없음 예외 처리
+    try {
+      console.log(`[login] 1. 로그인 프로세스 시작. 이메일: ${email}`);
+      const user = await this.userRepository.findOneBy({ email });
+      if (!user || !user.password) {
+        console.error(
+          `[login] 오류: 사용자를 찾을 수 없거나 비밀번호가 설정되지 않았습니다.`,
+        );
+        throw new UnauthorizedException(
+          '이메일 또는 비밀번호가 유효하지 않습니다.',
+        );
+      }
+      console.log(`[login] 2. 데이터베이스에서 사용자 조회 성공.`);
+
+      const isPasswordValid = await bcrypt.compare(pass, user.password);
+      if (!isPasswordValid) {
+        console.error(`[login] 오류: 비밀번호가 일치하지 않습니다.`);
+        throw new UnauthorizedException(
+          '이메일 또는 비밀번호가 유효하지 않습니다.',
+        );
+      }
+      console.log(`[login] 3. 비밀번호 검증 성공.`);
+
+      const payload: JwtPayload = {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      };
+
+      // 환경 변수에서 JWT 비밀 키를 가져옵니다.
+      const accessSecret = this.configService.get<string>('ACCESS_SECRET_KEY');
+      const refreshSecret =
+        this.configService.get<string>('REFRESH_SECRET_KEY');
+
+      console.log(
+        `[login] 4. JWT 비밀 키 로드 확인: ACCESS_SECRET_KEY 존재 여부: ${!!accessSecret}, REFRESH_SECRET_KEY 존재 여부: ${!!refreshSecret}`,
+      );
+
+      if (!accessSecret || !refreshSecret) {
+        console.error(
+          '[login] 치명적 오류: .env 파일에 ACCESS_SECRET_KEY 또는 REFRESH_SECRET_KEY이(가) 정의되지 않았습니다.',
+        );
+        throw new Error('서버 설정 오류: JWT 비밀 키가 누락되었습니다.');
+      }
+
+      // AccessToken은 기본 secret으로, RefreshToken은 별도 secret으로 생성
+      const accessToken = this.jwtService.sign(payload); // 모듈에 등록된 기본 secret (ACCESS_SECRET_KEY) 사용
+      const refreshTokenString = this.jwtService.sign(payload, {
+        secret: refreshSecret,
+        expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
+      });
+      console.log(`[login] 5. 액세스 토큰 및 리프레시 토큰 생성 완료.`);
+
+      await this.refreshTokenRepository.update(
+        { user: { id: user.id }, isRevoked: false },
+        { isRevoked: true },
+      );
+      console.log(`[login] 6. 기존 활성 리프레시 토큰 무효화 처리 완료.`);
+
+      const hashedToken = await bcrypt.hash(refreshTokenString, 10);
+      const newRefreshToken = this.refreshTokenRepository.create({
+        user,
+        hashedToken,
+        expiresAt: this.getRefreshTokenExpirationDate(),
+        ipAddress,
+        userAgent,
+      });
+
+      await this.refreshTokenRepository.save(newRefreshToken);
+      console.log(`[login] 7. 새로운 리프레시 토큰 데이터베이스에 저장 완료.`);
+
+      return { accessToken, refreshToken: refreshTokenString };
+    } catch (error) {
+      console.error('[login] 로그인 처리 중 예외 발생:', error);
+      throw error; // 에러를 다시 던져서 NestJS의 기본 예외 처리기가 응답을 생성하도록 함
     }
-
-    const isPasswordValid = await bcrypt.compare(pass, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException(
-        '이메일 또는 비밀번호가 유효하지 않습니다.',
-      ); // 비밀번호 불일치 예외 처리
-    }
-
-    const payload = { sub: user.id, email: user.email, role: user.role }; // JWT 페이로드 생성
-
-    // 액세스 토큰 생성
-    const accessToken = this.jwtService.sign(payload);
-
-    // 리프레시 토큰 생성
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
-    });
-
-    // 기존 리프레시 토큰 삭제
-    await this.refreshTokenRepository.delete({ user: { id: user.id } });
-
-    // 새 리프레시 토큰 저장
-    const newRefreshToken = this.refreshTokenRepository.create({
-      user,
-      token: refreshToken,
-      expiresAt: this.getRefreshTokenExpirationDate(),
-    });
-    await this.refreshTokenRepository.save(newRefreshToken);
-
-    return { accessToken, refreshToken };
   }
 
   /**
@@ -134,157 +174,169 @@ export class UsersService {
         'role',
         'createdAt',
       ],
-    }); // 비밀번호 제외하고 모든 사용자 정보 반환
+    });
   }
 
   /**
    * 특정 사용자 조회 (ID 기반)
-   * @param id
    */
   async findOneById(id: number): Promise<User> {
-    const user = await this.userRepository.findOneBy({ id }); // ID로 사용자 조회
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ['refreshToken'],
+    });
     if (!user) {
       throw new NotFoundException('사용자를 찾을 수 없습니다.');
     }
-    return user; // 사용자 정보 반환
+    return user;
   }
 
   /**
    * 사용자 정보 업데이트
-   * @param id
-   * @param updateData
    */
   async updateUser(id: number, updateData: Partial<User>): Promise<User> {
-    const user = await this.findOneById(id); // 사용자가 존재하는지 먼저 확인
-
+    const user = await this.findOneById(id);
     if (updateData.password) {
-      updateData.password = await bcrypt.hash(updateData.password, 10); // 비밀번호가 변경되는 경우 해싱
+      updateData.password = await bcrypt.hash(updateData.password, 10);
     }
-
-    // updateData를 기존 user 객체에 병합
     Object.assign(user, updateData);
-
-    return this.userRepository.save(user); // 업데이트된 사용자 정보 저장 및 반환
+    return this.userRepository.save(user);
   }
 
   /**
    * 사용자 역할 변경
-   * @param userId
-   * @param role
    */
   async updateUserRole(userId: number, role: string): Promise<User> {
-    const user = await this.findOneById(userId); // 사용자가 존재하는지 먼저 확인
-    user.role = role; // 역할 업데이트
-    return this.userRepository.save(user); // 업데이트된 사용자 정보 저장 및 반환
+    const user = await this.findOneById(userId);
+    user.role = role;
+    return this.userRepository.save(user);
   }
 
   /**
    * 사용자 삭제 (소프트 삭제)
-   * @param id
    */
   async remove(id: number): Promise<void> {
-    const result = await this.userRepository.softDelete(id); // 소프트 삭제 수행
+    const result = await this.userRepository.softDelete(id);
     if (result.affected === 0) {
-      throw new NotFoundException('삭제할 사용자를 찾을 수 없습니다.'); // 삭제할 사용자가 없는 경우 예외 처리
+      throw new NotFoundException('삭제할 사용자를 찾을 수 없습니다.');
     }
   }
 
   /**
-   * 리프레시 토큰으로 액세스 토큰 갱신
-   * @param refreshToken
+   * 리프레시 토큰으로 액세스 토큰 갱신 - 진단용 로그 추가
    */
   async refreshAccessToken(
-    refreshToken: string,
+    refreshTokenString: string,
+    ipAddress: string,
+    userAgent: string,
   ): Promise<{ accessToken: string; refreshToken: string }> {
     try {
-      // 리프레시 토큰 검증
-      const payload = this.jwtService.verify<{
-        sub: number;
-        email: string;
-        role: string;
-      }>(refreshToken, {
-        secret: this.configService.getOrThrow<string>('REFRESH_SECRET_KEY'),
-      });
+      console.log(`[refresh] 1. 토큰 갱신 프로세스 시작.`);
+      const refreshSecret =
+        this.configService.getOrThrow<string>('REFRESH_SECRET_KEY');
+      console.log(`[refresh] 2. 리프레시 토큰 비밀 키 로드 성공.`);
 
-      // 사용자 정보 조회
+      const payload = this.jwtService.verify<JwtPayload>(refreshTokenString, {
+        secret: refreshSecret,
+      });
+      console.log(`[refresh] 3. 리프레시 토큰 검증 및 payload 디코딩 성공.`);
+
       const user = await this.userRepository.findOneBy({ id: payload.sub });
       if (!user) {
-        throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
+        console.error(
+          `[refresh] 오류: payload에 해당하는 사용자를 찾을 수 없음.`,
+        );
+        throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
       }
+      console.log(`[refresh] 4. 데이터베이스에서 사용자 조회 성공.`);
 
-      // DB에서 만료되지 않은 리프레시 토큰 조회 (성능 최적화)
-      const storedToken = await this.refreshTokenRepository.findOne({
+      const userTokens = await this.refreshTokenRepository.find({
         where: {
           user: { id: user.id },
           expiresAt: MoreThan(new Date()),
+          isRevoked: false,
         },
       });
+      console.log(
+        `[refresh] 5. 데이터베이스에서 유효한 리프레시 토큰 ${userTokens.length}개 조회.`,
+      );
+      if (userTokens.length === 0)
+        throw new UnauthorizedException('유효한 리프레시 토큰이 없습니다.');
 
-      if (!storedToken) {
-        throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
+      let matchedToken: RefreshToken | null = null;
+      for (const token of userTokens) {
+        if (await bcrypt.compare(refreshTokenString, token.hashedToken)) {
+          matchedToken = token;
+          break;
+        }
+      }
+      console.log(
+        `[refresh] 6. 제공된 리프레시 토큰과 DB의 해시된 토큰 비교 결과: ${matchedToken ? '일치' : '불일치'}.`,
+      );
+
+      if (!matchedToken) {
+        console.warn(
+          `[refresh] 보안 경고: 유효하지 않은 토큰 사용 시도 감지. 사용자 ID: ${user.id}의 모든 토큰을 무효화합니다.`,
+        );
+        await this.refreshTokenRepository.update(
+          { user: { id: user.id } },
+          { isRevoked: true },
+        );
+        throw new UnauthorizedException(
+          '유효하지 않은 리프레시 토큰입니다. 보안을 위해 모든 세션이 종료되었습니다.',
+        );
       }
 
-      // 저장된 리프레시 토큰과 비교
-      const isMatch = await bcrypt.compare(refreshToken, storedToken.token);
-      if (!isMatch) {
-        throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
-      }
+      matchedToken.isRevoked = true;
+      await this.refreshTokenRepository.save(matchedToken);
+      console.log(`[refresh] 7. 사용된 리프레시 토큰 무효화 완료.`);
 
-      // 새로운 토큰 생성
-      const newPayload = { sub: user.id, email: user.email, role: user.role };
-      const newAccessToken = this.jwtService.sign(newPayload);
-      const newRefreshToken = this.jwtService.sign(newPayload, {
-        secret: this.configService.getOrThrow<string>('REFRESH_SECRET_KEY'),
+      const newPayload: JwtPayload = {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+      };
+      const newAccessToken = this.jwtService.sign(newPayload); // 기본 secret (ACCESS_SECRET_KEY) 사용
+      const newRefreshTokenString = this.jwtService.sign(newPayload, {
+        secret: refreshSecret,
         expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d`,
       });
+      console.log(
+        `[refresh] 8. 새로운 액세스 토큰 및 리프레시 토큰 생성 완료.`,
+      );
 
-      // 기존 토큰 삭제 (토큰 로테이션)
-      await this.refreshTokenRepository.delete(storedToken.id);
-
-      // 새로운 리프레시 토큰을 해싱하여 DB에 저장
-      const hashedRefreshToken = await bcrypt.hash(newRefreshToken, 10);
-
-      await this.refreshTokenRepository.save({
-        user_id: user.id,
-        token: hashedRefreshToken,
-        expires_at: this.getRefreshTokenExpirationDate(),
+      const newHashedToken = await bcrypt.hash(newRefreshTokenString, 10);
+      const newRefreshToken = this.refreshTokenRepository.create({
+        user,
+        hashedToken: newHashedToken,
+        expiresAt: this.getRefreshTokenExpirationDate(),
+        ipAddress,
+        userAgent,
       });
+      await this.refreshTokenRepository.save(newRefreshToken);
+      console.log(
+        `[refresh] 9. 새로운 리프레시 토큰 데이터베이스에 저장 완료.`,
+      );
 
       return {
         accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
+        refreshToken: newRefreshTokenString,
       };
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
+      console.error('[refresh] 토큰 갱신 처리 중 예외 발생:', error);
+      if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
     }
   }
 
-  private async validateRefreshToken(
-    userId: number,
-    token: string,
-  ): Promise<RefreshToken> {
-    const refreshToken = await this.refreshTokenRepository.findOne({
-      where: {
-        user: { id: userId },
-        token,
-        expiresAt: MoreThan(new Date()),
-      },
-    });
-
-    if (!refreshToken) {
-      throw new UnauthorizedException('리프레시 토큰이 유효하지 않습니다.');
-    }
-
-    return refreshToken;
-  }
-
   /**
    * 로그아웃
-   * @param userId
    */
   async logout(userId: number): Promise<void> {
-    await this.refreshTokenRepository.delete({ user: { id: userId } });
+    await this.refreshTokenRepository.update(
+      { user: { id: userId }, isRevoked: false },
+      { isRevoked: true },
+    );
   }
 
   /**

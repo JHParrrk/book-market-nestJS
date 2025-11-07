@@ -8,8 +8,9 @@ import {
   OneToMany,
   JoinColumn,
 } from 'typeorm';
+import { Book } from '@/books/book.entity/book.entity'; // Book 엔티티 import
 
-@Entity('categories')
+@Entity('categories') // 'categories' 테이블과 매핑 (카테고리 데이터를 저장)
 export class Category {
   @PrimaryGeneratedColumn()
   id: number;
@@ -18,7 +19,7 @@ export class Category {
     onDelete: 'CASCADE',
     nullable: true,
   })
-  @JoinColumn({ name: 'parent_id' })
+  @JoinColumn({ name: 'parent_id' }) // 상위 카테고리를 가리키는 외래 키
   parentCategory?: Category;
 
   @OneToMany(() => Category, (category) => category.parentCategory)
@@ -33,6 +34,7 @@ export class Category {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  @OneToMany('Book', 'category') // 'Book'과 'category' 문자열 사용
-  books?: any[];
+  // Books와 연결된 다대일 관계: 한 카테고리에 여러 책
+  @OneToMany(() => Book, (book) => book.category)
+  books?: Book[];
 }

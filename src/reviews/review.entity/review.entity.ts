@@ -9,9 +9,9 @@ import {
   Unique,
   OneToMany,
 } from 'typeorm';
-// import { User } from '@/users/user.entity/user.entity'; // 🚨 Import 제거
-// import { Book } from '@/books/book.entity/book.entity'; // 🚨 Import 제거
-// import { ReviewLike } from './review-like.entity'; // 🚨 Import 제거
+import { User } from '@/users/user.entity/user.entity';
+import { Book } from '@/books/book.entity/book.entity';
+import { ReviewLike } from '@/reviews/review.entity/review_like.entity';
 
 @Entity('reviews')
 @Unique(['user', 'book'])
@@ -20,21 +20,20 @@ export class Review {
   id: number;
 
   // 👇 관계를 문자열 기반으로 수정
-  @ManyToOne('User', 'reviews', {
+  @ManyToOne(() => User, (user) => user.reviews, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({ name: 'user_id' })
-  user: any;
+  user: User;
 
-  @ManyToOne('Book', 'reviews', {
+  @ManyToOne(() => Book, (book) => book.reviews, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({ name: 'book_id' })
-  book: any;
+  book: Book;
 
-  // ... (컬럼 변경 없음)
   @Column({ type: 'text', nullable: true })
   content?: string;
 
@@ -47,6 +46,6 @@ export class Review {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  @OneToMany('ReviewLike', 'review')
-  likes: any[];
+  @OneToMany(() => ReviewLike, (reviewLike) => reviewLike.review)
+  likes: ReviewLike[];
 }

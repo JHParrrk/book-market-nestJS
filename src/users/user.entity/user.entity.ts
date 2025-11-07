@@ -5,9 +5,15 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
-  // OneToMany,
+  OneToMany,
   // OneToOne,
 } from 'typeorm';
+import { RefreshToken } from '@/users/user.entity/refresh-token.entity';
+import { Order } from '@/orders/order.entity/order.entity';
+import { Cart } from '@/carts/cart.entity/cart.entity';
+import { Review } from '@/reviews/review.entity/review.entity';
+import { BookLike } from '@/books/book.entity/book_like.entity';
+import { ReviewLike } from '@/reviews/review.entity/review_like.entity';
 
 @Entity('users')
 export class User {
@@ -44,23 +50,23 @@ export class User {
   })
   deletedAt?: Date;
 
-  // // 👇 모든 관계 정의를 문자열 기반으로 변경하고, 타입을 any로 설정합니다.
+  @OneToMany(() => Order, (order) => order.user)
+  orders: Order[];
 
-  // @OneToMany('Order', 'user')
-  // orders: any[]; // 또는 Promise<any[]>
+  @OneToMany(() => RefreshToken, (refreshToken) => refreshToken.user, {
+    cascade: true, // User 저장/삭제 시 RefreshToken도 연동
+  })
+  refreshToken: RefreshToken;
 
-  // @OneToOne('RefreshToken', 'user')
-  // refreshToken: any; // 또는 Promise<any>
+  @OneToMany(() => Cart, (cart) => cart.user)
+  cartItems: Cart[];
 
-  // @OneToMany('Cart', 'user')
-  // cartItems: any[];
+  @OneToMany(() => Review, (review) => review.user)
+  reviews: Review[];
 
-  // @OneToMany('Review', 'user')
-  // reviews: any[];
+  @OneToMany(() => BookLike, (bookLike) => bookLike.user)
+  bookLikes: BookLike[];
 
-  // @OneToMany('BookLike', 'user')
-  // bookLikes: any[];
-
-  // @OneToMany('ReviewLike', 'user')
-  // reviewLikes: any[];
+  @OneToMany(() => ReviewLike, (reviewLike) => reviewLike.user)
+  reviewLikes: ReviewLike[];
 }

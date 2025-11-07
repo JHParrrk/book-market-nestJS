@@ -5,25 +5,27 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import { Book } from '@/books/book.entity/book.entity';
+import { Order } from '@/orders/order.entity/order.entity';
 
 @Entity('order_details')
 export class OrderDetail {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne('Order', 'orderDetails', {
+  @ManyToOne(() => Order, (order) => order.orderDetails, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({ name: 'order_id' })
-  order: any;
+  order: Order;
 
-  @ManyToOne('Book', 'orderDetails', {
+  @ManyToOne(() => Book, (book) => book.orderDetails, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({ name: 'book_id' })
-  book: any;
+  book: Book;
 
   @Column()
   quantity: number;

@@ -5,6 +5,8 @@ import {
   JoinColumn,
   PrimaryColumn,
 } from 'typeorm';
+import { Book } from '@/books/book.entity/book.entity';
+import { User } from '@/users/user.entity/user.entity';
 
 @Entity('book_likes')
 export class BookLike {
@@ -14,19 +16,19 @@ export class BookLike {
   @PrimaryColumn({ name: 'book_id' })
   bookId: number;
 
-  @ManyToOne('User', 'bookLikes', {
+  @ManyToOne(() => User, (user) => user.bookLikes, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({ name: 'user_id' })
-  user: any;
+  user: User;
 
-  @ManyToOne('Book', 'likes', {
+  @ManyToOne(() => Book, (book) => book.likes, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({ name: 'book_id' })
-  book: any;
+  book: Book;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
